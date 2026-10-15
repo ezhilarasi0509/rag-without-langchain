@@ -2,7 +2,7 @@
 
 A small question-answering bot that reads my own documents (PDF, DOCX, TXT) and answers questions about them. It is written in plain Python with ChromaDB for storage and Groq for the language model. No LangChain, no LlamaIndex.
 
-I built it by following the FutureSmart AI tutorial "Building RAG Applications Without LangChain or LlamaIndex", then changed a few things: Groq instead of OpenAI, `pypdf` instead of the abandoned PyPDF2, and `upsert` so re-running the script doesn't choke on duplicate chunk IDs.
+I built  "Building RAG Applications Without LangChain or LlamaIndex", then changed a few things: Groq instead of OpenAI, `pypdf` instead of the abandoned PyPDF2, and `upsert` so re-running the script doesn't choke on duplicate chunk IDs.
 
 ## Why skip the frameworks
 

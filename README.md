@@ -73,10 +73,29 @@ Assistant: It started in a small garage in Portland, Oregon, and now has offices
 
 ## What it can't do yet
 
-Chat history lives in memory and disappears when the program stops. Chunks don't overlap, so an answer that straddles two chunks can get lost. Nothing filters out weak matches, so an unrelated question still retrieves the closest chunks, although the prompt usually makes the model decline. Scanned PDFs return no text because there is no OCR. And it's terminal only.
+Chunks don't overlap, so an answer that straddles two chunks can get lost. Nothing filters out weak matches, so an unrelated question still retrieves the closest chunks, although the prompt usually makes the model decline. Scanned PDFs return no text because there is no OCR. And it's terminal only.
 
 ## Next
 
 I want to add a distance cutoff for retrieval, overlapping chunks, and a small Streamlit front end.
 
+## Credit
 
+Based on the FutureSmart AI tutorial by Sakalya Mitra and Pradip Nichite.
+
+## Chat memory in PostgreSQL
+
+Conversation history is stored in a local PostgreSQL database instead of a Python dictionary, so it survives restarts.
+
+Every question and answer is saved as a row in a `chat_messages` table (session id, role, content, the sources used, timestamp). On each question the bot reads the last five messages of the current session from the database, uses them to rewrite follow-ups into standalone questions, and includes them in the prompt. At startup it offers to continue the previous conversation, and typing `history` prints the saved messages.
+
+Setup on a Mac:
+
+```bash
+brew install postgresql@18
+brew services start postgresql@18
+createdb ragdb
+pip install -r requirements.txt
+```
+
+The connection string lives in `.env` as `DATABASE_URL` (see `.env.example`). The table is created automatically on the first run.

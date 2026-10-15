@@ -1,8 +1,8 @@
 import os
 import uuid
-from datetime import datetime
 
 import chromadb
+import psycopg2
 from chromadb.utils import embedding_functions
 from docx import Document as DocxDocument
 from dotenv import load_dotenv
@@ -63,7 +63,7 @@ def split_text(text, chunk_size=500):
     return chunks
 
 
-# ---------- Step 3: Vector database ----------
+# ---------- Step 3: Vector database (ChromaDB) ----------
 chroma_client = chromadb.PersistentClient(path="chroma_db")
 
 embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
@@ -158,29 +158,92 @@ def generate_response(query, context, conversation_history=""):
         return f"Error generating response: {e}"
 
 
-# ---------- Step 7: Conversation memory ----------
-conversations = {}
+# ---------- Step 7: Conversation memory stored in PostgreSQL ----------
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost/ragdb")
 
-
-def create_session():
-    session_id = str(uuid.uuid4())
-    conversations[session_id] = []
-    return session_id
-
-
-def add_message(session_id, role, content):
-    conversations.setdefault(session_id, []).append(
-        {"role": role, "content": content, "timestamp": datetime.now().isoformat()}
+try:
+    db = psycopg2.connect(DATABASE_URL)
+    db.autocommit = True
+except Exception as e:
+    raise SystemExit(
+        f"Could not connect to PostgreSQL at {DATABASE_URL}: {e}\n"
+        "Make sure Postgres is running and the database exists (createdb ragdb)."
     )
 
 
+def init_db():
+    with db.cursor() as cur:
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id         BIGSERIAL PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                role       TEXT NOT NULL,
+                content    TEXT NOT NULL,
+                sources    TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_chat_session ON chat_messages (session_id, id)"
+        )
+
+
+def create_session():
+    return str(uuid.uuid4())
+
+
+def get_last_session():
+    with db.cursor() as cur:
+        cur.execute("SELECT session_id FROM chat_messages ORDER BY id DESC LIMIT 1")
+        row = cur.fetchone()
+    return row[0] if row else None
+
+
+def add_message(session_id, role, content, sources=None):
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO chat_messages (session_id, role, content, sources) "
+            "VALUES (%s, %s, %s, %s)",
+            (session_id, role, content, sources),
+        )
+
+
+def get_conversation_history(session_id, max_messages=5):
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT role, content FROM chat_messages "
+            "WHERE session_id = %s ORDER BY id DESC LIMIT %s",
+            (session_id, max_messages),
+        )
+        rows = cur.fetchall()
+    return list(reversed(rows))  # oldest first
+
+
 def format_history_for_prompt(session_id, max_messages=5):
-    history = conversations.get(session_id, [])[-max_messages:]
     lines = []
-    for m in history:
-        role = "Human" if m["role"] == "user" else "Assistant"
-        lines.append(f"{role}: {m['content']}")
+    for role, content in get_conversation_history(session_id, max_messages):
+        label = "Human" if role == "user" else "Assistant"
+        lines.append(f"{label}: {content}")
     return "\n\n".join(lines)
+
+
+def show_history(session_id):
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT role, content, created_at FROM chat_messages "
+            "WHERE session_id = %s ORDER BY id",
+            (session_id,),
+        )
+        rows = cur.fetchall()
+    if not rows:
+        print("(no messages yet)\n")
+        return
+    for role, content, ts in rows:
+        who = "You" if role == "user" else "Assistant"
+        print(f"[{ts:%Y-%m-%d %H:%M}] {who}: {content}")
+    print()
 
 
 def contextualize_query(query, conversation_history):
@@ -223,7 +286,7 @@ def conversational_rag_query(collection, query, session_id, n_chunks=3):
     answer = generate_response(standalone, context, history)
 
     add_message(session_id, "user", query)
-    add_message(session_id, "assistant", answer)
+    add_message(session_id, "assistant", answer, sources=", ".join(sources))
     return answer, sources
 
 
@@ -231,14 +294,26 @@ if __name__ == "__main__":
     if not os.getenv("GROQ_API_KEY"):
         raise SystemExit("GROQ_API_KEY not found. Check your .env file.")
 
+    init_db()
     process_and_add_documents(collection, "docs")
 
     session = create_session()
-    print("\nRAG chatbot ready. Type 'exit' to quit.\n")
+    last = get_last_session()
+    if last:
+        choice = input("\nContinue your last conversation? (y/n): ").strip().lower()
+        if choice == "y":
+            session = last
+            print("\n--- Previous messages ---")
+            show_history(session)
+
+    print("RAG chatbot ready. Type 'history' to see this chat, 'exit' to quit.\n")
     while True:
         q = input("You: ").strip()
         if q.lower() in ("exit", "quit"):
             break
+        if q.lower() == "history":
+            show_history(session)
+            continue
         if not q:
             continue
         answer, sources = conversational_rag_query(collection, q, session)

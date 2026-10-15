@@ -4,3 +4,4 @@ pypdf
 python-docx
 sentence-transformers
 python-dotenv
+psycopg2-binary

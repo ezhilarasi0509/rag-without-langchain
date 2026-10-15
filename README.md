@@ -79,9 +79,7 @@ Chunks don't overlap, so an answer that straddles two chunks can get lost. Nothi
 
 I want to add a distance cutoff for retrieval, overlapping chunks, and a small Streamlit front end.
 
-## Credit
-
-Based on the FutureSmart AI tutorial by Sakalya Mitra and Pradip Nichite.
+.## 
 
 ## Chat memory in PostgreSQL
 

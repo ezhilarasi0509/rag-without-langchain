@@ -79,6 +79,4 @@ Chat history lives in memory and disappears when the program stops. Chunks don't
 
 I want to add a distance cutoff for retrieval, overlapping chunks, and a small Streamlit front end.
 
-## Credit
 
-Based on the FutureSmart AI tutorial by Sakalya Mitra and Pradip Nichite.

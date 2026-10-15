@@ -97,3 +97,5 @@ pip install -r requirements.txt
 ```
 
 The connection string lives in `.env` as `DATABASE_URL` (see `.env.example`). The table is created automatically on the first run.
+
+The table definition, inspection queries and a sample of the saved chat are in the [`db/`](db/) folder.

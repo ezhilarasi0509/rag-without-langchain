@@ -1,4 +1,5 @@
 import os
+import time
 import uuid
 
 import chromadb
@@ -8,6 +9,8 @@ from docx import Document as DocxDocument
 from dotenv import load_dotenv
 from groq import Groq
 from pypdf import PdfReader
+
+import cache
 
 load_dotenv()
 
@@ -278,12 +281,17 @@ def contextualize_query(query, conversation_history):
 def conversational_rag_query(collection, query, session_id, n_chunks=3):
     history = format_history_for_prompt(session_id)
     standalone = contextualize_query(query, history)
-    print(f"[Searching for: {standalone}]")
 
-    results = semantic_search(collection, standalone, n_chunks)
-    context, sources = get_context_with_sources(results)
-
-    answer = generate_response(standalone, context, history)
+    cached = cache.cache_get(standalone, n_chunks, MODEL)
+    if cached:
+        print("[cache hit: answered from Redis]")
+        answer, sources = cached["answer"], cached["sources"]
+    else:
+        print(f"[Searching for: {standalone}]")
+        results = semantic_search(collection, standalone, n_chunks)
+        context, sources = get_context_with_sources(results)
+        answer = generate_response(standalone, context, history)
+        cache.cache_set(standalone, n_chunks, MODEL, answer, sources)
 
     add_message(session_id, "user", query)
     add_message(session_id, "assistant", answer, sources=", ".join(sources))
@@ -316,6 +324,8 @@ if __name__ == "__main__":
             continue
         if not q:
             continue
+        start = time.perf_counter()
         answer, sources = conversational_rag_query(collection, q, session)
+        elapsed = time.perf_counter() - start
         print(f"\nAssistant: {answer}")
-        print("Sources:", ", ".join(sources), "\n")
+        print("Sources:", ", ".join(sources), f"\n(answered in {elapsed:.2f}s)\n")

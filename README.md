@@ -99,3 +99,17 @@ pip install -r requirements.txt
 The connection string lives in `.env` as `DATABASE_URL` (see `.env.example`). The table is created automatically on the first run.
 
 The table definition, inspection queries and a sample of the saved chat are in the [`db/`](db/) folder.
+
+## Redis answer cache
+
+Answers are cached in Redis, so a question that has already been asked is returned straight from the cache without searching ChromaDB or calling Groq again. A repeat question comes back in milliseconds instead of a few seconds.
+
+The cache key is a hash of the model name, the number of retrieved chunks, the normalized question, and a fingerprint of the `docs/` folder (file names, sizes and modified times). If a document changes, old answers are no longer used. Entries expire after 24 hours, and failed answers are never cached. If Redis is not running the bot simply works without a cache. The code is in `cache.py`.
+
+```bash
+brew install redis
+brew services start redis
+pip install -r requirements.txt
+```
+
+Set `REDIS_URL` in `.env` (see `.env.example`). The default is `redis://localhost:6379/0`.
